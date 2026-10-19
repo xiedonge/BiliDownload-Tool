@@ -1,0 +1,19 @@
+Chrome Cookie 导出扩展（已随安装包附带，无需再下载）
+
+随包版本：Get cookies.txt LOCALLY 0.7.2
+来源：项目官方 GitHub 仓库 https://github.com/kairi003/Get-cookies.txt-LOCALLY
+Chrome 商店页面：https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc
+许可证：MIT，见本目录 LICENSE。
+
+安装一次：
+1. 在 Chrome 地址栏打开 chrome://extensions/。
+2. 打开页面右上角“开发者模式”。
+3. 点击“加载已解压的扩展程序”。
+4. 选择本安装包中的“浏览器Cookie插件\src”文件夹。
+   若已运行安装器，也可以选择：
+   %LOCALAPPDATA%\Programs\BiliDownload\浏览器Cookie插件\src
+5. Chrome 扩展页出现“Get cookies.txt LOCALLY”即安装成功。之后登录 B 站，打开目标页面，点扩展图标，导出 Netscape 格式 Cookie 文件，然后在下载工具中选择这个 .txt 文件。
+
+扩展权限包括读取浏览器 Cookie 和访问网站。Cookie 文件可让他人使用你的登录态，属于敏感凭据。仅在自己的电脑上导出和使用，不要发给朋友、上传网盘或放入安装包。需要时可在 chrome://extensions/ 中停用或移除此扩展；也可直接从 Chrome 官方商店安装经商店分发的版本。
+
+本安装包附带的是项目官方仓库中的未打包源码，按项目 README 的 Chrome “Load Unpacked”方式安装。Chrome 需要保持开发者模式启用；这是浏览器对未通过商店安装的本地扩展的要求。

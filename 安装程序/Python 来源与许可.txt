@@ -1,0 +1,7 @@
+Python 来源与许可
+
+随包提供 Python 3.14.8 官方 Windows x64 安装程序，安装前由发布者签名验证确认为 Python Software Foundation。
+官方发布页：https://www.python.org/downloads/release/python-3148/
+Python Software Foundation License：https://docs.python.org/3/license.html
+
+选择 3.14.8 是因为 Python 3.12 当前安全更新为仅源码发布，Windows 没有对应的新版安装程序；3.14.8 有官方 Windows 安装程序并包含本工具使用的 tkinter。
