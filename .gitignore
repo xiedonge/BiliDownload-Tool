@@ -1,0 +1,8 @@
+# Runtime and personal data exclusions
+**/settings.json
+**/history.json
+**/*cookies*.txt
+**/cookies.txt
+**/downloads/**
+**/cache/**
+**/*.part
