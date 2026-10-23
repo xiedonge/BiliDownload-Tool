@@ -9,3 +9,9 @@
 **/__pycache__/
 **/.venv/
 **/venv/
+**/session.bin
+**/session.tmp
+**/任务历史/
+**/下载记录/
+**/下载缓存/
+**/.pytest_cache/

@@ -1,0 +1,6 @@
+二维码显示组件：python-qrcode 8.2
+来源：https://pypi.org/project/qrcode/8.2/
+上游：https://github.com/lincolnloop/python-qrcode
+许可：BSD，完整条款见 qrcode-LICENSE.txt。
+二维码数据只来自 B 站扫码接口，不使用第三方二维码网站。
+图像显示组件 Pillow 的许可证随其 wheel 分发，来源：https://pypi.org/project/pillow/12.0.0/

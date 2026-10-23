@@ -346,6 +346,9 @@ def configured_rate_limit():
 
 def load_cookie_file(path, target_url):
     """Read only the chosen site's Netscape cookies into memory; never rewrite the source."""
+    import account_login
+    if path == account_login.SESSION_REF:
+        return account_login.download_jar(target_url)
     from yt_dlp.cookies import YoutubeDLCookieJar
     cookie_path = Path(path)
     if not cookie_path.is_file():
@@ -649,7 +652,10 @@ class DownloadLogger:
 
 def quality_signature(raw_url, use_chrome=False, cookie_file=None):
     stamp = None
-    if cookie_file:
+    if cookie_file == '@bili-session':
+        import account_login
+        stamp = account_login.STORE.signature()
+    elif cookie_file:
         path = Path(cookie_file)
         try:
             stat = path.stat()
@@ -711,6 +717,7 @@ def download_video(raw_url, output_dir=DEFAULT_OUTPUT, use_chrome=False, emit=No
             downloaded = data.get("downloaded_bytes") or 0
             total = data.get("total_bytes") or data.get("total_bytes_estimate") or 0
             item = data.get("info_dict") or {}
+            emit('stage', '下载音频' if item.get('vcodec') == 'none' else '下载视频')
             emit("progress", {
                 "percent": min(100, downloaded / total * 100) if total else None,
                 "downloaded": downloaded, "total": total,
@@ -725,6 +732,7 @@ def download_video(raw_url, output_dir=DEFAULT_OUTPUT, use_chrome=False, emit=No
     def post_progress(data):
         # Once merging starts, let this short local operation finish before stopping.
         if data.get("status") == "started":
+            emit('stage', '合并 / 处理音视频')
             emit("status", "正在合并音视频，请稍候…")
 
     options = {
@@ -766,7 +774,7 @@ def download_video(raw_url, output_dir=DEFAULT_OUTPUT, use_chrome=False, emit=No
             install_bangumi_guard(downloader)
         if cookie_file:
             downloader.cookiejar = load_cookie_file(cookie_file, url)
-            emit("log", "已读取所选站点的登录文件，仅在本次下载中使用。")
+            emit("log", "已加载 B 站登录态。")
         try:
             info = downloader.extract_info(url, download=False)
         except (yt_dlp.utils.DownloadError, CookieLoadError) as exc:
@@ -800,6 +808,10 @@ def download_video(raw_url, output_dir=DEFAULT_OUTPUT, use_chrome=False, emit=No
         if preview_only:
             return {key: info.get(key) for key in ('id','title', 'width', 'height', 'fps', 'format_id','duration')} | {
                 'title':title,
+                'estimated_bytes': sum(f.get('filesize') or f.get('filesize_approx') or 0
+                                       for f in info.get('requested_formats', [info])),
+                'size_partial': any(not (f.get('filesize') or f.get('filesize_approx'))
+                                    for f in info.get('requested_formats', [info])),
                 'has_audio':any(f.get('acodec') not in (None,'none') for f in info.get('requested_formats',[info])),
                 'chrome_used': chrome_used, 'cookie_file_used': bool(cookie_file), 'fallback': fallback,
                 'signature': quality_signature(raw_url, use_chrome, cookie_file)}
@@ -836,6 +848,7 @@ def download_video(raw_url, output_dir=DEFAULT_OUTPUT, use_chrome=False, emit=No
         completed = completed_paths[-1].resolve()
         if completed.parent != cache_dir.resolve() or not completed.is_file():
             raise RuntimeError("下载产物位置异常，已停止保存。")
+        emit('stage', '校验成品')
         emit("status", "正在核验画质、时长和音视频轨道…")
         media = probe_media(completed, ffprobe)
         verified_info = verified_merge_selection(media, info, cache_dir, ffprobe)
@@ -1247,6 +1260,7 @@ def main():
     parser.add_argument("--batch", action="store_true", help="打开合集下载窗口，不自动下载")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--gui-smoke-test", action="store_true")
+    parser.add_argument('--login', action='store_true', help='打开主窗口的账号页，不自动请求登录')
     args = parser.parse_args()
     if args.url:
         last_progress = [0.0]
@@ -1273,6 +1287,8 @@ def main():
     try:
         from unified_app import launch
         app = launch(root, initial_url=args.prefill or "")
+        if args.login:
+            app.show_account()
     except Exception as exc:
         root.withdraw()
         messagebox.showerror("无法启动视频下载工具", describe_error(exc))

@@ -228,8 +228,10 @@ def run_batch(entries, folder, use_chrome=False, cookie_file=None, stop=None, em
             break
         except Exception as exc:
             result['failed'] += 1
+            policy = failure_policy(core.describe_error(exc))
             item = {'key': entry['key'], 'status': '失败', 'error': core.describe_error(exc),
-                    'retryable': getattr(exc, 'retryable', True), 'error_code': getattr(exc, 'code', None)}
+                    'retryable': bool(getattr(exc, 'retryable', True)) and policy['retryable'],
+                    'error_code': getattr(exc, 'code', None), 'policy': policy['action']}
         result['pending'] -= 1
         result['items'].append(item)
         # A flushed per-item receipt survives stopping or a later failed entry.
@@ -237,6 +239,9 @@ def run_batch(entries, folder, use_chrome=False, cookie_file=None, stop=None, em
             handle.write(json.dumps(item, ensure_ascii=False) + '\n')
         emit('item', {**item, 'state': item['status']})
         emit('batch_progress', {k: v for k, v in result.items() if k != 'items'})
+        if item.get('policy') == 'space':
+            stop.set()
+            break
         if stop.wait(0.6):
             break
     result['report'] = str(report)
@@ -263,7 +268,7 @@ def run_until_complete(entries, folder, use_chrome=False, cookie_file=None, stop
             break
         blocked = [item for item in current['items'] if item['status'] == '失败' and not item.get('retryable', True)]
         if blocked:
-            emit('log', f'{len(blocked)} 条片源受保护，已退出自动重试；其他条目继续处理。')
+            emit('log', f'{len(blocked)} 条需要人工处理，已退出自动重试；其他条目继续处理。')
         remaining = [entry for entry in remaining if latest[entry['key']]['status'] == '失败'
                      and latest[entry['key']].get('retryable', True)]
         if remaining:
@@ -320,6 +325,14 @@ def save_last_task(root, collection, selected, states, errors, raw, limit, paths
     temporary = path.with_suffix('.json.tmp')
     temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
     temporary.replace(path)
+
+
+def failure_policy(error):
+    category = failure_help(error)['category']
+    actions = {'片源受保护': 'source', '磁盘空间不足': 'space', '画质需要重新确认': 'quality',
+               '登录信息需要检查': 'login', '访问权限不足': 'permission', '视频可能不可用': 'source'}
+    action = actions.get(category, 'retry')
+    return {'category': category, 'action': action, 'retryable': action == 'retry'}
 
 
 def load_last_task(root):
@@ -406,6 +419,14 @@ class BatchWindow:
         self.pending_raw = ''
         self.qualities = {}
         self.folder = None
+        if hasattr(self, 'build_workspace'):
+            self.build_workspace()
+            self.use_chrome = parent.use_chrome.get()
+            self.cookie_file = parent.cookie_file
+            self.root.protocol('WM_DELETE_WINDOW', self.close)
+            self.restore_task()
+            self.root.after(100, self.poll)
+            return
         body = ttk.Frame(self.root, padding=18)
         body.pack(fill='both', expand=True, padx=20, pady=(85,20) if self.background else 12)
         ttk.Label(body, text='视频下载工具' if embedded else '一个链接，下载整个合集', style='Title.TLabel').pack(anchor='w')
@@ -567,7 +588,7 @@ class BatchWindow:
             self.error_text.set(f"{help_info['category']}：{help_info['advice']}  详细：{help_info['detail'][:320]}")
         else:
             self.error_text.set('选择失败的视频，可查看原因和处理建议。')
-        if not self.running:
+        if not self.running and not getattr(self, 'batch_locked', False):
             self.task_keys = list(keys)
             self.update_total()
         self.persist_task()
@@ -578,9 +599,9 @@ class BatchWindow:
         active = states.count('正在下载')
         failed = states.count('失败')
         blocked = sum(self.download_states.get(key) == '失败' and
-                      failure_help(self.errors.get(key, ''))['category'] == '片源受保护' for key in self.task_keys)
+                      not failure_policy(self.errors.get(key, ''))['retryable'] for key in self.task_keys)
         pending = len(states) - done - active - failed
-        self.total_text.set(f'总进度：已完成 {done} / {len(states)}（含跳过 {states.count("已存在")}） · 下载中 {active} · 待下载 {pending} · 待重试 {failed-blocked} · 受保护 {blocked}')
+        self.total_text.set(f'本批：已完成 {done} / {len(states)}（含跳过 {states.count("已存在")}） · 下载中 {active} · 待下载 {pending} · 待重试 {failed-blocked} · 待处理 {blocked}')
         self.total_bar['value'] = 100 * done / len(states) if states else 0
 
     def set_running(self, running):
@@ -668,6 +689,7 @@ class BatchWindow:
                 unknown += 1
             entries.append(item)
         self.task_keys = [entry['key'] for entry in entries]
+        self.batch_locked = True
         for key in self.task_keys:
             self.download_states[key] = '待下载'
         self.retry_now.clear()
@@ -822,7 +844,7 @@ class BatchWindow:
                     self.set_running(False)
                     self.status.set(f"任务结束：下载完成 {value['success']}，已存在 {value['skipped']}，失败 {value['failed']}，未处理 {value['pending']}。")
                     self.detail.set('已停止自动重试；下次下载会核验并跳过已有文件。' if value.get('stopped') else
-                                    (f"{value['blocked']} 条片源受保护，无法下载且不自动重试；选中后可打开播放页。" if value.get('blocked') else '本次处理已结束。'))
+                                    (f"{value['blocked']} 条需要人工处理，选中后查看对应操作。" if value.get('blocked') else '本次处理已结束。'))
                     self.retry_text.set('自动重试：已停止' if value.get('stopped') else '自动重试：本次已结束')
                     self.persist_task()
                 elif kind == 'error':

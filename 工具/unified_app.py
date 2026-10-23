@@ -15,6 +15,7 @@ import webbrowser
 import video_downloader as core
 import batch_download as batch
 import cache_manager
+from workspace_view import WorkspaceView
 
 
 def canonical_input(value):
@@ -40,28 +41,38 @@ def resolve_input(raw,limit,expand,use_chrome,cookie,stop,emit):
     return result
 
 
-class UnifiedApp(batch.BatchWindow):
+class UnifiedApp(WorkspaceView, batch.BatchWindow):
     def __init__(self,root,initial_url='',history_dir=None):
         config=core.read_settings()
         self.history_dir=Path(history_dir) if history_dir else core.APP_DIR/'任务历史'
         self.controller=core.LiveRateController(core.configured_rate_limit())
         self.cache_plan=None;self.operation='';self.history_rows={};self.history_loading=False
         self.pause_requested=False
+        self.parsed_scope=False
         style=ttk.Style(root);style.theme_use('clam')
         style.configure('TFrame',background='#f8f5ff')
         style.configure('TLabel',background='#f8f5ff',font=('Microsoft YaHei UI',10))
         style.configure('Title.TLabel',font=('Microsoft YaHei UI',20,'bold'),foreground='#493077')
-        style.configure('TButton',padding=(7,5))
-        style.configure('Primary.TButton',foreground='#62439f')
+        style.configure('TButton',padding=(9,6),font=('Microsoft YaHei UI',10),background='#ede7f6',foreground='#40374d')
+        style.configure('Primary.TButton',foreground='white',background='#7554b3')
+        style.map('Primary.TButton',background=[('disabled','#d5cce7'),('active','#624298')],foreground=[('disabled','#766d85')])
+        style.configure('TNotebook',background='#f8f5ff',borderwidth=0)
+        style.configure('TNotebook.Tab',padding=(16,7),font=('Microsoft YaHei UI',10),background='#ede7f6')
+        style.map('TNotebook.Tab',background=[('selected','#7554b3')],foreground=[('selected','white')])
+        style.configure('TProgressbar',background='#7554b3',troughcolor='#e8e2f1',borderwidth=0,thickness=8)
+        style.configure('TCheckbutton',background='#f8f5ff',font=('Microsoft YaHei UI',10))
+        style.configure('Treeview.Heading',font=('Microsoft YaHei UI',10,'bold'),background='#eee8f8')
+        style.configure('Treeview', rowheight=28, font=('Microsoft YaHei UI', 10))
         parent=SimpleNamespace(root=root,url=tk.StringVar(value=initial_url),
                                output_dir=Path(config.get('output_dir') or (Path.home()/'Videos'/'BiliDownload')),
                                cookie_file=config.get('cookie_file'),use_chrome=tk.BooleanVar(value=False))
         self.download_handler=functools.partial(core.download_video,rate_controller=self.controller)
         super().__init__(parent,embedded=True)
-        self.body.pack_configure(padx=16,pady=(40,14) if self.background else 10)
-        self.root.geometry(f'1200x{min(980,self.root.winfo_screenheight()-90)}')
-        self.root.minsize(1020,850)
+        self.root.title('B站视频下载工具 1.1.0 · 下载与账号')
+        self.root.geometry(f'{min(1120,self.root.winfo_screenwidth()-60)}x{min(800,self.root.winfo_screenheight()-90)}')
+        self.root.minsize(820,620)
         self.input.bind('<<Modified>>',self.input_modified)
+        self.root.bind('<Destroy>',self.cancel_timers,add='+')
         self.input.edit_modified(False)
         self.table.bind('<Double-1>',lambda e:self.open_selected())
         self.restore_paths()
@@ -70,58 +81,23 @@ class UnifiedApp(batch.BatchWindow):
         self.refresh_history()
         self.refresh_disk()
 
-    def build_settings(self,body):
-        self.body=body
-        config=core.read_settings()
-        row=ttk.Frame(body);row.pack(fill='x',pady=(6,3))
-        self.cookie_label=tk.StringVar(value='Cookie：'+(Path(self.parent.cookie_file).name if self.parent.cookie_file else '未选择'))
-        self.cookie_button=ttk.Button(row,text='选择 Cookie',command=self.choose_cookie);self.cookie_button.pack(side='left')
-        ttk.Label(row,textvariable=self.cookie_label).pack(side='left',padx=6)
-        self.rate_enabled=tk.BooleanVar(value=config.get('rate_limit_enabled',True))
-        self.rate_mb=tk.StringVar(value=str(config.get('rate_limit_mb','2')))
-        ttk.Checkbutton(row,text='限速',variable=self.rate_enabled).pack(side='left',padx=(12,0))
-        ttk.Combobox(row,textvariable=self.rate_mb,values=('0.5','1','2','5','10'),width=6).pack(side='left',padx=4)
-        ttk.Label(row,text='MB/s').pack(side='left')
-        ttk.Button(row,text='立即应用',command=self.apply_rate).pack(side='left',padx=6)
-        self.rate_text=tk.StringVar(value='下载中也可调整');ttk.Label(row,textvariable=self.rate_text).pack(side='left')
-        row=ttk.Frame(body);row.pack(fill='x',pady=3)
-        self.output_text=tk.StringVar(value=str(self.parent.output_dir))
-        ttk.Label(row,text='保存到：').pack(side='left')
-        ttk.Label(row,textvariable=self.output_text,width=52).pack(side='left')
-        self.output_button=ttk.Button(row,text='更换目录',command=self.choose_output);self.output_button.pack(side='left',padx=4)
-        self.disk_text=tk.StringVar();ttk.Label(row,textvariable=self.disk_text).pack(side='left',padx=4)
-        self.cache_button=ttk.Button(row,text='检查可清理缓存',command=self.scan_cache);self.cache_button.pack(side='right')
-        row=ttk.Frame(body);row.pack(fill='x',pady=3)
-        self.expand=tk.BooleanVar(value=False)
-        self.expand_button=ttk.Checkbutton(row,text='普通视频链接展开所在合集',variable=self.expand);self.expand_button.pack(side='left')
-        ttk.Label(row,text='背景浓度').pack(side='left',padx=(14,4))
-        self.background_level=tk.DoubleVar(value=float(config.get('background_opacity',0.2))*100)
-        ttk.Scale(row,from_=0,to=100,variable=self.background_level,command=self.adjust_background,length=120).pack(side='left')
-        self.background_text=tk.StringVar(value=f"{self.background_level.get():.0f}%")
-        ttk.Label(row,textvariable=self.background_text,width=5).pack(side='left',padx=4)
-        ttk.Button(row,text='历史任务列表',command=self.toggle_history).pack(side='right')
-        self.history_frame=ttk.Frame(body)
-        self.history=ttk.Treeview(self.history_frame,columns=('title','counts','output','updated'),show='headings',height=5)
-        for key,title,width in [('title','历史任务',260),('counts','完成 / 总数',100),('output','保存位置',350),('updated','更新时间',150)]:
-            self.history.heading(key,text=title);self.history.column(key,width=width)
-        self.history.pack(fill='x')
-        self.history.bind('<Double-1>',lambda e:self.load_history())
-        ttk.Button(self.history_frame,text='恢复选中历史任务',command=self.load_history).pack(anchor='e')
-
-    def build_task_actions(self,body):
-        row=ttk.Frame(body);row.pack(fill='x',pady=3)
-        self.extra_buttons=[]
-        for label,command in [('只选未完成',self.select_unfinished),('只选失败',self.select_failed),
-                              ('只选原版',lambda:self.select_version('原版')),('只选中文',lambda:self.select_version('中文'))]:
-            button=ttk.Button(row,text=label,command=command);button.pack(side='left',padx=(0,4));self.extra_buttons.append(button)
-        ttk.Button(row,text='打开选中视频',command=self.open_selected).pack(side='right')
-        ttk.Button(row,text='定位文件',command=lambda:self.open_selected(locate=True)).pack(side='right',padx=4)
-        self.fix_button=ttk.Button(row,text='处理选中失败',command=self.fix_selected);self.fix_button.pack(side='left',padx=4)
+    def cancel_timers(self,event):
+        if event.widget is not self.root:return
+        self.stop.set()
+        for timer in self.root.tk.call('after','info'):
+            try:self.root.after_cancel(timer)
+            except tk.TclError:pass
 
     def set_running(self,running):
         super().set_running(running)
         for button in (self.cookie_button,self.output_button,self.cache_button,self.expand_button,*self.extra_buttons):
             button.configure(state='disabled' if running else 'normal')
+        for button in (self.login_button,self.verify_button,self.logout_button,self.remember_check,self.history_restore_button):
+            button.configure(state='disabled' if running else 'normal')
+        self.scope_box.configure(state='disabled' if running else 'readonly')
+        self.login_cancel.configure(state='normal' if running and self.operation=='login' else 'disabled')
+        self.stop_button.configure(text='暂停' if self.operation=='download' else '停止当前操作')
+        self.download_button.configure(text='预览并继续' if self.batch_locked else '预览并下载')
         # Limit controls deliberately stay enabled; the active transfer reads the controller.
 
     def apply_rate(self):
@@ -153,13 +129,10 @@ class UnifiedApp(batch.BatchWindow):
         if self.running:return
         path=self.filedialog.askopenfilename(title='选择本机 Cookie 文件',filetypes=[('Cookie 文件','*.txt')])
         if not path:return
-        try:core.remember_cookie_path(path)
+        try:self.account_changed(path)
         except OSError:self.status.set('Cookie 路径无法保存。');return
-        self.cookie_file=self.parent.cookie_file=path
-        self.cookie_label.set('Cookie：'+Path(path).name)
-        self.qualities.clear()
-        for key in self.table.get_children():self.table.set(key,'resolution','需重新检查')
-        self.status.set('登录文件已更换，请重新检查画质。')
+        self.cookie_label.set('已导入登录文件 · 待验证')
+        self.verify_login()
 
     def choose_output(self):
         if self.running:return
@@ -173,6 +146,7 @@ class UnifiedApp(batch.BatchWindow):
         if self.collection:
             self.folder=batch.collection_folder(chosen,self.collection['title'],self.collection['reference'])
         self.refresh_disk();self.persist_task()
+        self.hide_preview()
 
     def refresh_disk(self):
         if getattr(self,'disk_timer',None):
@@ -190,13 +164,14 @@ class UnifiedApp(batch.BatchWindow):
         if not self.input.edit_modified():return
         self.input.edit_modified(False)
         if self.parsed_raw and canonical_input(self.input.get('1.0','end'))!=canonical_input(self.parsed_raw):
+            self.hide_preview()
             self.status.set('链接已改变：下面是旧清单，请先重新解析。')
             self.download_button.configure(state='disabled');self.quality_button.configure(state='disabled')
         elif not self.running:
             self.download_button.configure(state='normal');self.quality_button.configure(state='normal')
 
     def list_is_current(self):
-        if not self.collection or canonical_input(self.input.get('1.0','end'))!=canonical_input(self.parsed_raw):
+        if not self.collection or self.expand.get()!=self.parsed_scope or canonical_input(self.input.get('1.0','end'))!=canonical_input(self.parsed_raw):
             self.status.set('请先解析当前链接，清单与链接不一致。');return False
         return True
 
@@ -205,6 +180,7 @@ class UnifiedApp(batch.BatchWindow):
         try:limit=int(self.limit.get());raw=self.input.get('1.0','end').strip()
         except ValueError:self.status.set('读取上限请输入数字。');return
         if not 1<=limit<=2000:self.status.set('读取上限应为 1～2000。');return
+        self.hide_preview();self.batch_locked=False;self.parsed_scope=self.expand.get()
         self.pending_raw=raw;self.collection=None;self.qualities={};self.download_paths={};self.errors={};self.download_states={}
         self.table.delete(*self.table.get_children());self.task_keys=[];self.update_total()
         self.operation='parse';self.status.set('正在识别当前链接和清单…')
@@ -212,14 +188,21 @@ class UnifiedApp(batch.BatchWindow):
         self.worker(lambda:resolve_input(raw,limit,expand,self.use_chrome,cookie,self.stop,self.emit),'parsed')
 
     def start(self):
+        if self.running:return
+        if not self.list_is_current():return
+        self.show_preview()
+
+    def _start_confirmed(self):
         if not self.list_is_current():return
         # Normalize tracking-only changes before the base provenance guard.
         self.parsed_raw=self.input.get('1.0','end').strip()
         self.operation='download'
-        super().start()
+        batch.BatchWindow.start(self)
 
     def check_qualities(self,force=False):
         if not self.list_is_current():return
+        self.hide_preview()
+        self.pages.select(self.download_page)
         self.operation='quality';super().check_qualities(force)
 
     def selected_key(self):
@@ -265,14 +248,18 @@ class UnifiedApp(batch.BatchWindow):
 
     def selection_changed(self,event=None):
         super().selection_changed(event)
+        self.selection_text.set(f'已选 {len(self.table.selection())} / {len(self.table.get_children())} 条')
         key=self.selected_key();error=self.errors.get(key,'')
         category=batch.failure_help(error)['category'] if error else ''
-        if '登录' in category or '权限' in category:label='更换 Cookie'
+        if '登录' in category:label='重新登录 B 站'
         elif '磁盘' in category:label='更换目录'
         elif '画质' in category:label='重新检查此项'
-        elif '不可用' in category or '限制' in category or '受保护' in category:label='浏览器查看'
+        elif any(word in category for word in ('不可用','限制','受保护','权限')):label='浏览器查看'
         else:label='重试选中失败'
         self.fix_button.configure(text=label)
+        if not error:self.error_text.set('')
+        self.fix_button.configure(state='normal' if error and not self.running else 'disabled')
+        if self.preview_keys and self.preview_keys!=tuple(self.table.selection()):self.hide_preview()
 
     def fix_selected(self):
         if self.running:
@@ -280,14 +267,15 @@ class UnifiedApp(batch.BatchWindow):
         key=self.selected_key()
         if key is None:return
         category=batch.failure_help(self.errors.get(key,''))['category']
-        if '登录' in category or '权限' in category:self.choose_cookie()
+        if '登录' in category:self.show_account();self.begin_login()
         elif '磁盘' in category:self.choose_output()
         elif '画质' in category:
             self.table.selection_set(key);self.check_qualities(force=True)
-        elif '不可用' in category or '限制' in category or '受保护' in category:webbrowser.open(self.collection['entries'][int(key)]['url'])
+        elif any(word in category for word in ('不可用','限制','受保护','权限')):webbrowser.open(self.collection['entries'][int(key)]['url'])
         else:self.table.selection_set(key);self.start()
 
     def on_event(self,kind,value):
+        self.workspace_event(kind,value)
         if kind=='parsed':
             quality=value.pop('_quality',None);error=value.pop('_error',None)
             if quality:self.emit('quality_row',{'key':'0','quality':quality})
@@ -308,9 +296,12 @@ class UnifiedApp(batch.BatchWindow):
 
     def after_parsed(self):
         self.restore_paths();self.select_unfinished();self.persist_task()
+        self.download_button.configure(text='预览并下载')
         if self.collection:
             kind='单个视频' if self.collection.get('single_video') else ('正片版本/剧集' if self.collection.get('main_episodes_only') else '合集')
             self.status.set(f"当前清单：{self.collection['title']} · {kind} · {len(self.collection['entries'])} 条。")
+            if self.auto_check.get() and not self.running and any(k not in self.qualities for k in self.table.selection()):
+                self.check_qualities()
 
     def scan_cache(self):
         if self.running:return
@@ -371,9 +362,7 @@ class UnifiedApp(batch.BatchWindow):
             except (OSError,ValueError,KeyError):pass
 
     def toggle_history(self):
-        if self.history_frame.winfo_manager():self.history_frame.pack_forget()
-        else:
-            self.refresh_history();self.history_frame.pack(fill='x',before=self.input,pady=4)
+        self.refresh_history();self.pages.select(self.history_frame)
 
     def load_history(self):
         if self.running:self.status.set('请先停止当前处理，再恢复历史任务。');return
@@ -385,10 +374,12 @@ class UnifiedApp(batch.BatchWindow):
             path.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
         except OSError:self.status.set('历史保存目录不可写，无法恢复任务。');return
         self.history_loading=True
+        self.hide_preview();self.batch_locked=False
         self.parent.output_dir=output;self.output_text.set(str(output))
         self.restore_task(force=True);self.restore_paths();self.select_unfinished(initial=True)
         self.history_loading=False
-        self.history_frame.pack_forget();self.persist_task()
+        self.parsed_scope=self.expand.get()
+        self.pages.select(self.download_page);self.persist_task()
 
 
 def launch(root,initial_url=''):
