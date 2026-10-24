@@ -8,10 +8,10 @@ $Payload = Join-Path $PSScriptRoot 'python-3.14.8-amd64.exe'
 $FfmpegLicense = Join-Path $PSScriptRoot 'FFmpeg 来源与许可.txt'
 $PythonLicense = Join-Path $PSScriptRoot 'Python 来源与许可.txt'
 $CookieExtensionSource = Join-Path (Split-Path $PSScriptRoot -Parent) '浏览器Cookie插件\src'
-$FfmpegUrl = 'https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-full_build.zip'
-$FfmpegSha256 = '759D0A9831C436A0EB331AD36F236C06CB04AAA0005DA46571F0E9D3D9206F6B'
+$FfmpegPayload = Join-Path $PSScriptRoot 'ffmpeg-9.0.2-full_build.zip'
 
 if (-not (Test-Path -LiteralPath $Payload -PathType Leaf)) { throw '安装包缺少随附的 Python 安装文件。请重新解压 ZIP。' }
+if (-not (Test-Path -LiteralPath $FfmpegPayload -PathType Leaf)) { throw '安装包缺少随附的 FFmpeg 文件。请完整解压离线安装包。' }
 [System.IO.Directory]::CreateDirectory($ToolDir) | Out-Null
 [System.IO.Directory]::CreateDirectory($PythonDir) | Out-Null
 
@@ -66,52 +66,8 @@ if (Test-Path -LiteralPath $wheelhouse -PathType Container) {
 }
 if ($LASTEXITCODE -ne 0) { throw '下载器或二维码组件安装失败。请检查网络后重新运行安装程序。' }
 
-if (-not (Test-Path -LiteralPath (Join-Path $FfmpegDir 'ffmpeg.exe') -PathType Leaf) -or
-    -not (Test-Path -LiteralPath (Join-Path $FfmpegDir 'ffprobe.exe') -PathType Leaf)) {
-  $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('BiliDownload-FFmpeg-' + [guid]::NewGuid().ToString('N'))
-  [System.IO.Directory]::CreateDirectory($tempRoot) | Out-Null
-  $archive = Join-Path $tempRoot 'ffmpeg.zip'
-  try {
-    Write-Host '正在下载 FFmpeg/FFprobe（约 109 MB），并核对官方发布包校验值…'
-    Invoke-WebRequest -Uri $FfmpegUrl -OutFile $archive
-    $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
-    if ($actualHash -ne $FfmpegSha256) { throw 'FFmpeg 压缩包校验失败，已停止安装。' }
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $zip = [System.IO.Compression.ZipFile]::OpenRead($archive)
-    try {
-      $expected = @{
-        'ffmpeg-9.0.2-full_build/bin/ffmpeg.exe' = 'ffmpeg.exe'
-        'ffmpeg-9.0.2-full_build/bin/ffprobe.exe' = 'ffprobe.exe'
-      }
-      [System.IO.Directory]::CreateDirectory($FfmpegDir) | Out-Null
-      foreach ($entry in $zip.Entries) {
-        $key = $entry.FullName.Replace('\','/')
-        if ($expected.ContainsKey($key)) {
-          $destination = Join-Path $FfmpegDir $expected[$key]
-          $input = $entry.Open()
-          try {
-            $output = [System.IO.File]::Create($destination)
-            try { $input.CopyTo($output) } finally { $output.Dispose() }
-          } finally { $input.Dispose() }
-        }
-      }
-    } finally { $zip.Dispose() }
-    foreach ($name in @('ffmpeg.exe','ffprobe.exe')) {
-      if (-not (Test-Path -LiteralPath (Join-Path $FfmpegDir $name) -PathType Leaf)) { throw "FFmpeg 包缺少 $name" }
-    }
-  } finally {
-    if (Test-Path -LiteralPath $tempRoot -PathType Container) {
-      $tempPrefix = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
-      $resolvedTemp = [System.IO.Path]::GetFullPath($tempRoot)
-      if (-not $resolvedTemp.StartsWith($tempPrefix,[System.StringComparison]::OrdinalIgnoreCase) -or
-          [System.IO.Path]::GetFileName($resolvedTemp) -notlike 'BiliDownload-FFmpeg-*') {
-        throw '临时下载目录位置异常，已停止清理。'
-      }
-      Get-ChildItem -LiteralPath $resolvedTemp -Force | Remove-Item -Force -Recurse
-      Remove-Item -LiteralPath $resolvedTemp -Force
-    }
-  }
-}
+Write-Host '正在校验并安装随包提供的 FFmpeg / FFprobe…'
+& (Join-Path $PSScriptRoot '安装FFmpeg.ps1') -ArchivePath $FfmpegPayload -DestinationDir $FfmpegDir
 
 $launcher = Join-Path $InstallDir '下载视频.cmd'
 $pythonw = Join-Path $PythonDir 'pythonw.exe'

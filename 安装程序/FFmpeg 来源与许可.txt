@@ -1,6 +1,9 @@
 FFmpeg/FFprobe 来源与许可
 
-本安装器会从 Gyan 的 FFmpeg Windows 构建发布地址下载 9.0.2 版本，不随本 ZIP 重新分发 FFmpeg 二进制文件。下载后使用 SHA-256 759D0A9831C436A0EB331AD36F236C06CB04AAA0005DA46571F0E9D3D9206F6B 校验，并只复制 ffmpeg.exe 与 ffprobe.exe 到本机工具目录。
+本安装包随附 Gyan 发布的 FFmpeg 9.0.2 full_build 原始 ZIP，未修改其中的二进制文件。安装时使用 SHA-256 759D0A9831C436A0EB331AD36F236C06CB04AAA0005DA46571F0E9D3D9206F6B 校验，从本地压缩包复制 ffmpeg.exe、ffprobe.exe、LICENSE 与 README.txt，无需联网下载。
+
+原始包：https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-full_build.zip
+随包完整许可和构建配置：安装程序/ffmpeg-9.0.2-full_build.zip 内的 LICENSE 与 README.txt。安装后保留在工具/bin/FFmpeg-LICENSE 与 FFmpeg-README.txt。
 
 发布页：https://www.gyan.dev/ffmpeg/builds/
 源码仓库：https://github.com/FFmpeg/FFmpeg

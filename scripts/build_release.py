@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument('--python-installer', type=Path, required=True)
 parser.add_argument('--wheels', type=Path, required=True)
+parser.add_argument('--ffmpeg-archive', type=Path, required=True)
 parser.add_argument('--output', type=Path, required=True)
 args = parser.parse_args()
 out = args.output.resolve()
@@ -16,6 +17,8 @@ if out.exists():
     raise SystemExit('Output directory already exists; choose a new build directory.')
 if not args.python_installer.is_file() or not list(args.wheels.glob('*.whl')):
     raise SystemExit('Python installer or dependency wheels are missing.')
+if not args.ffmpeg_archive.is_file() or hashlib.sha256(args.ffmpeg_archive.read_bytes()).hexdigest() != '759d0a9831c436a0eb331ad36f236c06cb04aaa0005da46571f0e9d3d9206f6b':
+    raise SystemExit('Pinned FFmpeg archive is missing or does not match its SHA-256.')
 out.mkdir(parents=True)
 for folder in ('安装程序', '工具'):
     (out/folder).mkdir()
@@ -26,6 +29,7 @@ for path in (ROOT/'安装程序').iterdir():
     if path.is_file() and path.suffix in ('.ps1', '.cmd', '.txt'):
         shutil.copyfile(path, out/'安装程序'/path.name)
 shutil.copyfile(args.python_installer, out/'安装程序'/'python-3.14.8-amd64.exe')
+shutil.copyfile(args.ffmpeg_archive, out/'安装程序'/'ffmpeg-9.0.2-full_build.zip')
 (out/'安装程序'/'wheels').mkdir()
 for path in args.wheels.glob('*.whl'):
     shutil.copyfile(path, out/'安装程序'/'wheels'/path.name)
@@ -43,7 +47,7 @@ archive = Path(str(out) + '.zip')
 with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as bundle:
     for p in sorted(out.rglob('*')):
         if p.is_file():
-            bundle.write(p, p.relative_to(out))
+            bundle.write(p, p.relative_to(out), compress_type=zipfile.ZIP_STORED if p.suffix == '.zip' else zipfile.ZIP_DEFLATED)
 with zipfile.ZipFile(archive) as bundle:
     if bundle.testzip() is not None:
         raise SystemExit('Archive integrity check failed')
