@@ -7,7 +7,11 @@ $expectedHash = '759D0A9831C436A0EB331AD36F236C06CB04AAA0005DA46571F0E9D3D9206F6
 if (-not (Test-Path -LiteralPath $ArchivePath -PathType Leaf)) {
   throw '安装包缺少随附的 FFmpeg 压缩包，请完整解压离线安装包。'
 }
-if ((Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash -ne $expectedHash) {
+$stream = [IO.File]::OpenRead($ArchivePath)
+$sha256 = [Security.Cryptography.SHA256]::Create()
+try { $actualHash = [BitConverter]::ToString($sha256.ComputeHash($stream)).Replace('-', '') }
+finally { $stream.Dispose(); $sha256.Dispose() }
+if ($actualHash -ne $expectedHash) {
   throw '随附 FFmpeg 压缩包校验失败，请重新获取完整安装包。'
 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem

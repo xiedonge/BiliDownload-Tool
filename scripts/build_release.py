@@ -35,8 +35,12 @@ for path in args.wheels.glob('*.whl'):
     shutil.copyfile(path, out/'安装程序'/'wheels'/path.name)
 shutil.copytree(ROOT/'浏览器Cookie插件', out/'浏览器Cookie插件',
                 ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*cookies*.txt', 'settings.json'))
-for name in ('安装并启动.cmd', '首次运行说明.txt', '新版使用说明.md'):
+for name in ('安装并启动.cmd', 'setup.ps1', '首次运行说明.txt', '新版使用说明.md'):
     shutil.copyfile(ROOT/name, out/name)
+for p in out.rglob('*'):
+    if p.suffix.lower() in ('.cmd', '.ps1'):
+        contents = p.read_text(encoding='utf-8-sig').replace('\r\n', '\n')
+        p.write_bytes((b'\xef\xbb\xbf' if p.suffix.lower() == '.ps1' else b'') + contents.replace('\n', '\r\n').encode('utf-8'))
 files = sorted(p for p in out.rglob('*') if p.is_file())
 for p in files:
     if p.name.lower() in ('cookies.txt', 'settings.json', 'session.bin', 'history.json') or p.suffix in ('.part', '.mp4', '.mkv', '.pyc'):

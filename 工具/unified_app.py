@@ -68,7 +68,7 @@ class UnifiedApp(WorkspaceView, batch.BatchWindow):
                                cookie_file=config.get('cookie_file'),use_chrome=tk.BooleanVar(value=False))
         self.download_handler=functools.partial(core.download_video,rate_controller=self.controller)
         super().__init__(parent,embedded=True)
-        self.root.title('B站视频下载工具 1.1.1 · 下载与账号')
+        self.root.title('B站视频下载工具 1.1.2 · 下载与账号')
         self.root.geometry(f'{min(1120,self.root.winfo_screenwidth()-60)}x{min(800,self.root.winfo_screenheight()-90)}')
         self.root.minsize(820,620)
         self.input.bind('<<Modified>>',self.input_modified)

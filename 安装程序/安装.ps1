@@ -1,4 +1,5 @@
-﻿$ErrorActionPreference = 'Stop'
+﻿param([switch]$NoLaunch)
+$ErrorActionPreference = 'Stop'
 $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\BiliDownload'
 $ToolDir = Join-Path $InstallDir '工具'
 $PythonDir = Join-Path $InstallDir 'runtime'
@@ -47,7 +48,7 @@ foreach ($name in @('安装说明.txt','打开扩展管理.cmd','LICENSE','READM
 
 if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
   Write-Host '正在安装随包提供的 Python 3.14.8（仅安装到当前用户目录）…'
-  $arguments = @('/quiet','InstallAllUsers=0',"TargetDir=$PythonDir",'Include_pip=1','Include_tcltk=1',
+  $arguments = @('/quiet','InstallAllUsers=0',"TargetDir=`"$PythonDir`"",'Include_pip=1','Include_tcltk=1',
     'Include_test=0','Include_doc=0','Include_launcher=0','Include_tools=0','Shortcuts=0','PrependPath=0',
     'Include_exe=1','Include_dev=0')
   $process = Start-Process -FilePath $Payload -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
@@ -86,5 +87,9 @@ $link.WorkingDirectory = $InstallDir
 $link.Save()
 
 Write-Host "安装完成：$InstallDir"
-Write-Host '正在启动视频下载工具…'
-Start-Process -FilePath $launcher
+& $PythonExe -X utf8 $gui --gui-smoke-test
+if ($LASTEXITCODE -ne 0) { throw '程序启动检查失败，请保留安装日志。' }
+if (-not $NoLaunch) {
+  Write-Host '正在启动视频下载工具…'
+  Start-Process -FilePath $launcher -WindowStyle Hidden
+}
