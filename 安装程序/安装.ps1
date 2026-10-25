@@ -16,7 +16,7 @@ if (-not (Test-Path -LiteralPath $FfmpegPayload -PathType Leaf)) { throw '安装
 [System.IO.Directory]::CreateDirectory($ToolDir) | Out-Null
 [System.IO.Directory]::CreateDirectory($PythonDir) | Out-Null
 
-foreach ($name in @('video_downloader.py','batch_download.py','unified_app.py','cache_manager.py','workspace_view.py','account_login.py')) {
+foreach ($name in @('video_downloader.py','batch_download.py','unified_app.py','cache_manager.py','workspace_view.py','account_login.py','audio_download.py')) {
   $from = Join-Path (Split-Path $PSScriptRoot -Parent) (Join-Path '工具' $name)
   if (-not (Test-Path -LiteralPath $from -PathType Leaf)) { throw "安装包缺少工具文件：$name" }
   [System.IO.File]::Copy($from,(Join-Path $ToolDir $name),$true)

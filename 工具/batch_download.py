@@ -189,6 +189,8 @@ def enumerate_collection(raw, limit=500, use_chrome=False, cookie_file=None, sto
 
 def save_preview(collection, output_root):
     folder = collection_folder(output_root, collection['title'], collection['reference'])
+    if collection.get('audio_only'):
+        folder = folder / '仅音频'
     records = folder / '下载记录'
     records.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
@@ -348,7 +350,8 @@ def load_last_task(root):
     return data
 
 def valid_quality(quality, url, use_chrome=False, cookie_file=None):
-    return bool(quality and (quality.get('width') or 0)>0 and (quality.get('height') or 0)>0
+    return bool(quality and ((quality.get('audio_only') and quality.get('has_audio')) or
+                ((quality.get('width') or 0)>0 and (quality.get('height') or 0)>0))
                 and quality.get('format_id') and quality.get('signature') ==
                 core.quality_signature(url,use_chrome,cookie_file))
 
@@ -544,8 +547,12 @@ class BatchWindow:
                 return
             self.table.delete(*self.table.get_children())
             self.collection = saved['collection']
+            if hasattr(self, 'configure_download_mode'):
+                self.configure_download_mode(bool(self.collection.get('audio_only')))
             self.parsed_raw = previous
             self.folder = collection_folder(self.parent.output_dir, self.collection['title'], self.collection['reference'])
+            if self.collection.get('audio_only'):
+                self.folder = self.folder / '仅音频'
             self.qualities = load_quality_cache(self.folder, self.collection['entries'], self.use_chrome, self.cookie_file)
             self.errors = saved.get('errors', {})
             self.download_states = saved.get('states', {})
@@ -560,7 +567,7 @@ class BatchWindow:
                 if state == '正在下载':
                     state = '待续传'
                     self.download_states[key] = state
-                resolution = f"{q['width']}×{q['height']}" if q else '待检查'
+                resolution = (core.quality_text(q) if q.get("audio_only") else f"{q['width']}×{q['height']}") if q else '待检查'
                 self.table.insert('', 'end', iid=key, values=(i+1, entry['title'], resolution, q.get('fps') or '—', state))
             selected = [key for key in saved.get('selected',[]) if self.table.exists(key)]
             self.table.selection_set(selected)
@@ -730,7 +737,7 @@ class BatchWindow:
                     break
                 self.emit('quality_status',f'仅检查画质，不下载视频：{position} / {len(keys)}')
                 try:
-                    q = core.download_video(self.collection['entries'][int(key)]['url'],self.folder,
+                    q = getattr(self, 'download_handler', core.download_video)(self.collection['entries'][int(key)]['url'],self.folder,
                             self.use_chrome,self.emit,self.stop,self.cookie_file,preview_only=True)
                     if not valid_quality(q,self.collection['entries'][int(key)]['url'],self.use_chrome,self.cookie_file):
                         raise ValueError('没有识别到有效分辨率，下次点击会继续补查。')
@@ -800,7 +807,7 @@ class BatchWindow:
                         restored={}
                     for key,q in restored.items():
                         self.qualities[key]=q
-                        self.table.set(key,'resolution',f"{q['width']}×{q['height']}")
+                        self.table.set(key,'resolution',core.quality_text(q) if q.get("audio_only") else f"{q['width']}×{q['height']}")
                         self.table.set(key,'fps',str(q.get('fps') or '?'))
                         self.table.set(key,'status','已检查 · 已恢复')
                     self.table.selection_set(self.table.get_children())
@@ -816,7 +823,7 @@ class BatchWindow:
                         q = value['quality']
                         self.qualities[key] = q
                         self.errors.pop(key, None)
-                        self.table.set(key,'resolution',f"{q.get('width') or '?'}×{q.get('height') or '?'}")
+                        self.table.set(key,'resolution',core.quality_text(q) if q.get("audio_only") else f"{q.get('width') or '?'}×{q.get('height') or '?'}")
                         self.table.set(key,'fps',str(q.get('fps') or '?'))
                         self.table.set(key,'status','已检查 · 登录态' if q['cookie_file_used'] or q['chrome_used'] else '已检查 · 公开')
                         try:

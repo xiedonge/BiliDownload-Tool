@@ -666,6 +666,9 @@ def quality_signature(raw_url, use_chrome=False, cookie_file=None):
 
 
 def quality_text(quality):
+    if quality.get('audio_only'):
+        bitrate = f"{quality['abr']:g} kbps" if quality.get('abr') else '码率未知'
+        return f"{quality.get('acodec') or '原始音轨'} · {bitrate}"
     height = quality.get('height') or 0
     label = '4K' if height == 2160 else (f'{height}P' if height else '未知')
     return f"{quality.get('width') or '?'} × {height or '?'}（{label}） · {quality.get('fps') or '?'} 帧"

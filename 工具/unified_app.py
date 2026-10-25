@@ -15,6 +15,7 @@ import webbrowser
 import video_downloader as core
 import batch_download as batch
 import cache_manager
+import audio_download
 from workspace_view import WorkspaceView
 
 
@@ -23,7 +24,7 @@ def canonical_input(value):
     except ValueError:return (value.strip(),)
 
 
-def resolve_input(raw,limit,expand,use_chrome,cookie,stop,emit):
+def resolve_input(raw,limit,expand,use_chrome,cookie,stop,emit,audio_only=False):
     urls=list(canonical_input(raw))
     if not urls:raise ValueError('请先粘贴链接。')
     if len(urls)>1 or expand or core.bangumi_id(urls[0],'ss') or 'space.bilibili.com/' in urls[0]:
@@ -33,7 +34,7 @@ def resolve_input(raw,limit,expand,use_chrome,cookie,stop,emit):
     result={'title':identity,'reference':url,'expected_count':1,'truncated':False,'single_video':True,
             'entries':[{'url':url,'id':identity,'title':identity}]}
     try:
-        q=core.download_video(url,use_chrome=use_chrome,cookie_file=cookie,stop=stop,emit=emit,preview_only=True)
+        q=(audio_download.download_audio if audio_only else core.download_video)(url,use_chrome=use_chrome,cookie_file=cookie,stop=stop,emit=emit,preview_only=True)
         result['title']=result['entries'][0]['title']=q['title']
         result['entries'][0]['id']=q['id'];result['_quality']=q
     except core.Cancelled:raise
@@ -68,7 +69,7 @@ class UnifiedApp(WorkspaceView, batch.BatchWindow):
                                cookie_file=config.get('cookie_file'),use_chrome=tk.BooleanVar(value=False))
         self.download_handler=functools.partial(core.download_video,rate_controller=self.controller)
         super().__init__(parent,embedded=True)
-        self.root.title('B站视频下载工具 1.1.2 · 下载与账号')
+        self.root.title('B站视频下载工具 1.2.0 · 下载与账号')
         self.root.geometry(f'{min(1120,self.root.winfo_screenwidth()-60)}x{min(800,self.root.winfo_screenheight()-90)}')
         self.root.minsize(820,620)
         self.input.bind('<<Modified>>',self.input_modified)
@@ -94,11 +95,39 @@ class UnifiedApp(WorkspaceView, batch.BatchWindow):
             button.configure(state='disabled' if running else 'normal')
         for button in (self.login_button,self.verify_button,self.logout_button,self.remember_check,self.history_restore_button):
             button.configure(state='disabled' if running else 'normal')
+        self.mode_box.configure(state='disabled' if running else 'readonly')
         self.scope_box.configure(state='disabled' if running else 'readonly')
         self.login_cancel.configure(state='normal' if running and self.operation=='login' else 'disabled')
         self.stop_button.configure(text='暂停' if self.operation=='download' else '停止当前操作')
         self.download_button.configure(text='预览并继续' if self.batch_locked else '预览并下载')
         # Limit controls deliberately stay enabled; the active transfer reads the controller.
+
+    def audio_mode(self):
+        return self.download_mode.get() == '仅音频（原始音质）'
+
+    def configure_download_mode(self, audio):
+        self.download_mode.set('仅音频（原始音质）' if audio else '视频（含音频）')
+        self.download_handler=functools.partial(audio_download.download_audio if audio else core.download_video,
+                                               rate_controller=self.controller)
+        self.table.heading('resolution', text='音轨 / 码率' if audio else '可下载分辨率')
+
+    def mode_changed(self, event=None):
+        if self.running: return
+        self.configure_download_mode(self.audio_mode())
+        self.hide_preview()
+        self.batch_locked=False
+        self.qualities.clear();self.download_states.clear();self.download_paths.clear();self.errors.clear()
+        if self.collection:
+            self.collection['audio_only']=self.audio_mode()
+            self.folder=batch.save_preview(self.collection,self.parent.output_dir)
+            self.qualities=batch.load_quality_cache(self.folder,self.collection['entries'],self.use_chrome,self.cookie_file)
+            for key in self.table.get_children():
+                q=self.qualities.get(key)
+                self.table.set(key,'resolution',core.quality_text(q) if q else '未检查')
+                self.table.set(key,'fps','—');self.table.set(key,'status','待下载')
+            self.restore_paths()
+        self.update_total();self.persist_task()
+        self.status.set('已切换到'+self.download_mode.get()+'，请检查音轨/画质后预览下载。')
 
     def apply_rate(self):
         try:
@@ -185,7 +214,7 @@ class UnifiedApp(WorkspaceView, batch.BatchWindow):
         self.table.delete(*self.table.get_children());self.task_keys=[];self.update_total()
         self.operation='parse';self.status.set('正在识别当前链接和清单…')
         expand=self.expand.get();cookie=self.cookie_file
-        self.worker(lambda:resolve_input(raw,limit,expand,self.use_chrome,cookie,self.stop,self.emit),'parsed')
+        self.worker(lambda:resolve_input(raw,limit,expand,self.use_chrome,cookie,self.stop,self.emit,self.audio_mode()),'parsed')
 
     def start(self):
         if self.running:return
@@ -235,9 +264,10 @@ class UnifiedApp(WorkspaceView, batch.BatchWindow):
                 key=ids.get(identity);path=row.get('path')
                 if key is None and identity.startswith('BV'):
                     key=next((ids.get(alias) for alias in core.same_video_ids(identity) if alias in ids),None)
+                if bool(row.get('audio_only')) != self.audio_mode(): continue
                 if key is not None and path and Path(path).is_file():
                     self.download_paths[key]=path;self.download_states[key]='已完成'
-                    self.table.set(key,'status','已完成');self.table.set(key,'resolution',f"{row.get('width','?')}×{row.get('height','?')}")
+                    self.table.set(key,'status','已完成');self.table.set(key,'resolution',"音频 · "+str(row.get("audio_codec") or "原始") if row.get("audio_only") else f"{row.get('width','?')}×{row.get('height','?')}")
             except (OSError,ValueError):pass
 
     def open_selected(self,locate=False):
@@ -275,6 +305,7 @@ class UnifiedApp(WorkspaceView, batch.BatchWindow):
         else:self.table.selection_set(key);self.start()
 
     def on_event(self,kind,value):
+        if kind == 'parsed': value['audio_only'] = self.audio_mode()
         self.workspace_event(kind,value)
         if kind=='parsed':
             quality=value.pop('_quality',None);error=value.pop('_error',None)
@@ -313,7 +344,7 @@ class UnifiedApp(WorkspaceView, batch.BatchWindow):
         if not self.collection or self.restoring or self.history_loading:return
         try:
             self.history_dir.mkdir(parents=True,exist_ok=True)
-            identifier=hashlib.sha256((str(self.parent.output_dir.resolve())+'\n'+self.collection['reference']).encode()).hexdigest()[:20]
+            identifier=hashlib.sha256((str(self.parent.output_dir.resolve())+'\n'+self.collection['reference']+('\naudio' if self.audio_mode() else '')).encode()).hexdigest()[:20]
             source=self.parent.output_dir/'下载记录'/'上次批量任务.json'
             if not source.is_file():return
             data=json.loads(source.read_text(encoding='utf-8'))
@@ -330,7 +361,7 @@ class UnifiedApp(WorkspaceView, batch.BatchWindow):
                 d=json.loads(p.read_text(encoding='utf-8'));c=d['collection'];states=d.get('states',{})
                 done=sum(x in ('已完成','已存在') for x in states.values())
                 self.history_rows[p.stem]=d
-                self.history.insert('','end',iid=p.stem,values=(c['title'],f"{done}/{len(c['entries'])}",d['output_root'],d.get('updated_at','')))
+                self.history.insert('','end',iid=p.stem,values=(c['title']+(' [仅音频]' if c.get('audio_only') else ''),f"{done}/{len(c['entries'])}",d['output_root'],d.get('updated_at','')))
             except (OSError,ValueError,KeyError):pass
 
     def import_old_tasks(self):

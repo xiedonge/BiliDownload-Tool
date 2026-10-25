@@ -22,7 +22,7 @@ if not args.ffmpeg_archive.is_file() or hashlib.sha256(args.ffmpeg_archive.read_
 out.mkdir(parents=True)
 for folder in ('安装程序', '工具'):
     (out/folder).mkdir()
-for name in ('video_downloader.py', 'batch_download.py', 'unified_app.py', 'cache_manager.py', 'workspace_view.py', 'account_login.py'):
+for name in ('video_downloader.py', 'batch_download.py', 'unified_app.py', 'cache_manager.py', 'workspace_view.py', 'account_login.py', 'audio_download.py'):
     shutil.copyfile(ROOT/'工具'/name, out/'工具'/name)
 shutil.copytree(ROOT/'工具'/'assets', out/'工具'/'assets')
 for path in (ROOT/'安装程序').iterdir():

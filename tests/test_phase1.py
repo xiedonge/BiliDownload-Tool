@@ -195,6 +195,25 @@ class WorkspaceTests(unittest.TestCase):
         self.assertFalse(self.app.list_is_current())
         self.assertFalse(self.app.preview_keys)
 
+    def test_audio_mode_resets_video_completion_and_restores_separate_history(self):
+        self.parsed()
+        original_folder=self.app.folder
+        self.app.download_states['0']='已完成'
+        self.app.start()
+        self.app.download_mode.set('仅音频（原始音质）')
+        self.app.mode_changed()
+        self.assertFalse(self.app.preview_keys)
+        self.assertEqual(self.app.folder, original_folder/'仅音频')
+        self.assertFalse(self.app.download_states)
+        self.app.show_preview()
+        self.assertIn('仅音频',self.app.preview_text.get())
+        self.assertIn('不下载视频流',self.app.preview_text.get())
+        self.app.persist_task()
+        self.app.configure_download_mode(False)
+        self.app.restore_task(force=True)
+        self.assertTrue(self.app.audio_mode())
+        self.assertEqual(self.app.folder,original_folder/'仅音频')
+
     def test_batch_statistics_do_not_follow_selection_after_start(self):
         self.parsed()
         self.app.task_keys = ['0', '1']

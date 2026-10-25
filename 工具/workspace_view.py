@@ -149,7 +149,12 @@ class WorkspaceView:
         self.scope_box.bind('<<ComboboxSelected>>', self.scope_changed)
         self.import_button = ttk.Button(options, text='导入链接 TXT', command=self.import_links)
         self.import_button.pack(side='left', padx=8)
-        ttk.Label(options, text='支持每行一个链接；番剧链接读取剧集').pack(side='left')
+        self.download_mode = tk.StringVar(value='视频（含音频）')
+        self.mode_box = ttk.Combobox(options, textvariable=self.download_mode, state='readonly', width=21,
+            values=('视频（含音频）', '仅音频（原始音质）'))
+        self.mode_box.pack(side='right')
+        self.mode_box.bind('<<ComboboxSelected>>', self.mode_changed)
+        ttk.Label(options, text='下载内容：').pack(side='right')
         self.status = tk.StringVar(value='粘贴链接，先确认清单和画质，再开始下载。')
         self.status_label = ttk.Label(page, textvariable=self.status, wraplength=900)
         self.status_label.grid(row=2, column=0, sticky='ew', pady=(0, 6))
@@ -424,7 +429,7 @@ class WorkspaceView:
         existing = sum(bool(self.download_paths.get(k)) and Path(self.download_paths[k]).is_file() for k in keys)
         unknown = len(keys) - len(known)
         self.preview_text.set(
-            f"确认内容：{self.collection['title']}\n来源：{self.collection['reference']}\n"
+            f"下载模式：{self.download_mode.get()}\n确认内容：{self.collection['title']}\n来源：{self.collection['reference']}\n"
             f"选中 {len(keys)} / {len(self.collection['entries'])} 条 · {'仅当前视频' if self.collection.get('single_video') else '合集 / 剧集 / 多链接清单'}\n"
             + ('清单达到读取上限，只包含部分内容。\n' if self.collection.get('truncated') else '')
             + '已确认画质：' + ('；'.join(qualities[:4]) or '暂无')
@@ -433,6 +438,8 @@ class WorkspaceView:
             + f'已知传输量约 {core.format_size(estimated)}；大小未完整识别 {unknown_size} 条（合并另需空间）。\n'
             + f'历史成品可找到 {existing} 条；下载时仍核验同内容同画质，符合才跳过。\n'
             + f'保存到：{self.folder}')
+        if self.audio_mode():
+            self.preview_text.set(self.preview_text.get().replace('画质','音轨').replace('（合并另需空间）','（保留原始音质，不下载视频流）'))
         self.confirm_button.configure(text=f'确认下载 {len(keys)} 条' + ('（含未识别）' if unknown else ''))
         self.table_frame.grid_remove()
         self.confirmation.grid(row=3, column=0, sticky='nsew')

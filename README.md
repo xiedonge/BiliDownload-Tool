@@ -2,7 +2,7 @@
 
 Windows 10/11 x64 桌面下载工具。仓库包含应用源码、安装脚本和 Chrome Cookie 插件源码；普通用户建议从 [GitHub Releases](https://github.com/xiedonge/BiliDownload-Tool/releases) 下载 Windows 一键安装包。
 
-## 1.1.2
+## 1.2.0
 
 新增工具内 B 站扫码登录、下载前确认预览、独立账号/历史/设置页面、小屏布局、阶段进度，以及按失败原因处理重试。使用方式见[新版使用说明](新版使用说明.md)。扫码使用 B 站网页登录接口，不需要插件；该接口由网站维护，可能随平台变化。
 
